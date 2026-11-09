@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: chainguard-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      - key: GUARD_FACTORY
+        sync: false
+      - key: MOCK_ERC20
+        sync: false
+      - key: CHAINGUARD_REACTIVE
+        sync: false
+      - key: BASE_START_BLOCK
+        sync: false
+      - key: LASNA_START_BLOCK
+        sync: false

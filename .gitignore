@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+*.log
+.DS_Store
+
+# Third-party UNLICENSED dependency: never vendor/redistribute; install via scripts/install-deps.sh
+contracts/lib/reactive-lib-omni/
