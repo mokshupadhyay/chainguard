@@ -12,7 +12,14 @@ contract GuardFactory {
 
     mapping(address => address[]) private _guardsOf;
 
-    event GuardCreated(address indexed owner, address indexed guard);
+    /// @dev Carries the initial policy: the Guard emits it in its constructor, before Lasna can subscribe to it.
+    event GuardCreated(
+        address indexed owner,
+        address indexed guard,
+        bool enabled,
+        bool revokeUnlimited,
+        uint256 maxAllowance
+    );
 
     constructor(IPayable callbackProxy_, address reactive_) {
         callbackProxy = callbackProxy_;
@@ -22,13 +29,10 @@ contract GuardFactory {
     /// @notice Deploys a Guard owned by msg.sender. Any ETH sent funds callback gas for the Guard.
     /// Default policy: enabled, revoke unlimited approvals, no cap.
     function createGuard() external payable returns (address guard) {
-        guard = address(
-            new GuardModule{value: msg.value}(
-                msg.sender, callbackProxy, reactive, GuardModule.Policy(true, true, 0)
-            )
-        );
+        GuardModule.Policy memory p = GuardModule.Policy(true, true, 0);
+        guard = address(new GuardModule{value: msg.value}(msg.sender, callbackProxy, reactive, p));
         _guardsOf[msg.sender].push(guard);
-        emit GuardCreated(msg.sender, guard);
+        emit GuardCreated(msg.sender, guard, p.enabled, p.revokeUnlimited, p.maxAllowance);
     }
 
     function guardsOf(address owner) external view returns (address[] memory) {

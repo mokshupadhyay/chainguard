@@ -9,6 +9,7 @@ contract MockSystem {
         uint256 chainId;
         address c;
         uint256 t0;
+        uint256 t1;
     }
     Sub[] public subs;
     ISystemContract.CallbackConfiguration_V_1_0 public lastCallback;
@@ -20,8 +21,10 @@ contract MockSystem {
         return 0;
     }
 
-    function subscribe(uint256 chainId, address c, uint256 t0, uint256, uint256, uint256) external {
-        subs.push(Sub(chainId, c, t0));
+    function subscribe(uint256 chainId, address c, uint256 t0, uint256 t1, uint256, uint256)
+        external
+    {
+        subs.push(Sub(chainId, c, t0, t1));
     }
 
     function subsLength() external view returns (uint256) {
@@ -31,6 +34,10 @@ contract MockSystem {
     function requestCallbackV_1_0(ISystemContract.CallbackConfiguration_V_1_0 memory cfg) external {
         lastCallback = cfg;
         callbackCount++;
+    }
+
+    function resetCallbacks() external {
+        callbackCount = 0;
     }
 
     function lastPayload() external view returns (bytes memory) {

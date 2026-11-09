@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { formatUnits, isAddress, maxUint256, parseUnits, zeroAddress } from 'viem'
-import { useAccount, useConnect, useDisconnect, useReadContract, useSwitchChain } from 'wagmi'
+import { useAccount, useConnect, useDisconnect, useReadContract, useReadContracts, useSwitchChain } from 'wagmi'
 import { erc20Abi, factoryAbi, guardAbi, reactiveAbi } from './abi'
 import { fetchTxs } from './api'
 import { baseAddr, baseSepolia, baseTx, cfg, configured, lasna, lasnaAddr, lasnaTx, short } from './config'
@@ -107,6 +107,17 @@ function GuardView({ guard, owner, refresh }: { guard: `0x${string}`; owner: `0x
 
   const policy = useReadContract({ chainId: baseSepolia.id, address: guard, abi: guardAbi, functionName: 'policy', query: poll })
   const mirrored = useReadContract({ chainId: lasna.id, address: cfg.reactive, abi: reactiveAbi, functionName: 'policies', args: [guard], query: { refetchInterval: 5000 } })
+  const registeredOnLasna = useReadContract({ chainId: lasna.id, address: cfg.reactive, abi: reactiveAbi, functionName: 'registered', args: [guard], query: { refetchInterval: 4000 } })
+  const readyOnBase = useReadContract({ chainId: baseSepolia.id, address: guard, abi: guardAbi, functionName: 'ready', query: poll })
+  const watched = useReadContract({ chainId: lasna.id, address: cfg.reactive, abi: reactiveAbi, functionName: 'tokens' })
+  const tokenInfo = useReadContracts({
+    allowFailure: true,
+    contracts: (watched.data ?? []).flatMap((t) => [
+      { chainId: baseSepolia.id, address: t, abi: erc20Abi, functionName: 'symbol' } as const,
+      { chainId: baseSepolia.id, address: guard, abi: guardAbi, functionName: 'protectedToken', args: [t] } as const,
+    ]),
+    query: { enabled: !!watched.data?.length, refetchInterval: 5000 },
+  })
   const bal = useReadContract({ chainId: baseSepolia.id, address: token, abi: erc20Abi, functionName: 'balanceOf', args: [guard], query: poll })
   const allowance = useReadContract({ chainId: baseSepolia.id, address: token, abi: erc20Abi, functionName: 'allowance', args: [guard, sp ?? zeroAddress], query: { ...poll, enabled: !!sp } })
   const events = useLoopEvents(guard, cfg.reactive)
@@ -120,6 +131,9 @@ function GuardView({ guard, owner, refresh }: { guard: `0x${string}`; owner: `0x
   const p = policy.data
   const m = mirrored.data
   const inSync = p && m && p[0] === m[0] && p[1] === m[1] && p[2] === m[2]
+  const ready = readyOnBase.data === true
+  const registered = registeredOnLasna.data === true
+  const tokenRows = (watched.data ?? []).map((t, i) => ({ addr: t, symbol: (tokenInfo.data?.[2 * i]?.result as string | undefined) ?? short(t), on: tokenInfo.data?.[2 * i + 1]?.result === true }))
   const busy = (t: { status: string }) => t.status === 'signing' || t.status === 'pending'
 
   return (
@@ -133,9 +147,31 @@ function GuardView({ guard, owner, refresh }: { guard: `0x${string}`; owner: `0x
         <TxState t={mint} />
       </Card>
 
+      <div className="md:col-span-2">
+        <Card title="Protection status" right={<span className={`rounded-full px-2 py-0.5 text-xs ${ready ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>{ready ? 'Protected' : 'Registering…'}</span>}>
+          <ol className="space-y-1 text-sm">
+            <li className={registered ? 'text-emerald-400' : 'text-amber-400'}>{registered ? '✓' : '…'} Guard registered on Reactive Lasna{registeredOnLasna.isError ? ' (Lasna RPC unavailable)' : ''}</li>
+            <li className={ready ? 'text-emerald-400' : 'text-amber-400'}>{ready ? '✓' : '…'} Lasna confirmed back to your Guard (on Base Sepolia)</li>
+          </ol>
+          {!ready && <p className="mt-2 text-xs text-amber-400">Approvals and policy changes are disabled until Lasna confirms. This is an on-chain handshake, not a timer, and usually takes under a minute. You can still withdraw your funds at any time.</p>}
+          <h3 className="mt-4 text-sm font-medium text-slate-300">Protected tokens</h3>
+          {tokenRows.length ? (
+            <ul className="mt-1 space-y-1 text-sm">
+              {tokenRows.map((t) => (
+                <li key={t.addr} className="flex items-center justify-between gap-2">
+                  <span><span className="font-medium">{t.symbol}</span> <Link href={baseAddr(t.addr)}>{short(t.addr)}</Link></span>
+                  <span className={t.on ? 'text-emerald-400' : 'text-amber-400'}>{t.on ? 'protected ✓' : 'not confirmed yet'}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="mt-1 text-xs text-slate-500">{watched.isError ? 'Could not read the token allowlist from Lasna.' : 'Reading allowlist…'}</p>}
+          <p className="mt-3 text-xs text-slate-500">Only the tokens above are watched. The Guard refuses to approve any other token, because an approval on an unwatched token could never be revoked automatically. NFT (ERC-721) approvals and tokens outside this allowlist are unsupported. You can still withdraw them.</p>
+        </Card>
+      </div>
+
       <Card title="Security policy">
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={p?.[0] ?? false} disabled={!p || busy(setPol)} onChange={(e) => setPol.send({ address: guard, abi: guardAbi, functionName: 'setPolicy', args: [e.target.checked, p![1], p![2]] })} /> Protection enabled</label>
-        <label className="mt-1 flex items-center gap-2 text-sm"><input type="checkbox" checked={p?.[1] ?? false} disabled={!p || busy(setPol)} onChange={(e) => setPol.send({ address: guard, abi: guardAbi, functionName: 'setPolicy', args: [p![0], e.target.checked, p![2]] })} /> Revoke unlimited approvals</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={p?.[0] ?? false} disabled={!p || !ready || busy(setPol)} onChange={(e) => setPol.send({ address: guard, abi: guardAbi, functionName: 'setPolicy', args: [e.target.checked, p![1], p![2]] })} /> Protection enabled</label>
+        <label className="mt-1 flex items-center gap-2 text-sm"><input type="checkbox" checked={p?.[1] ?? false} disabled={!p || !ready || busy(setPol)} onChange={(e) => setPol.send({ address: guard, abi: guardAbi, functionName: 'setPolicy', args: [p![0], e.target.checked, p![2]] })} /> Revoke unlimited approvals</label>
         <p className="mt-2 text-xs text-slate-500">Max allowance cap: {p ? (p[2] === 0n ? 'disabled' : formatUnits(p[2], 18)) : '…'}</p>
         <p className={`mt-2 text-xs ${inSync ? 'text-emerald-400' : 'text-amber-400'}`}>
           {m === undefined ? 'Reading Lasna…' : inSync ? 'Policy active on Reactive Lasna ✓' : 'Waiting for the policy to reach Reactive Lasna (new Guards take a few seconds)…'}
@@ -148,11 +184,12 @@ function GuardView({ guard, owner, refresh }: { guard: `0x${string}`; owner: `0x
           <p className="mb-3 text-sm text-slate-400">Your Guard grants an allowance to a spender. If it is unlimited, ChainGuard should revoke it on its own within seconds.</p>
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-xs text-slate-400">Spender<input value={spender} onChange={(e) => setSpender(e.target.value)} className="mt-1 block w-96 max-w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-sm text-slate-100" /></label>
-            <Btn disabled={!sp || busy(approve) || !p?.[0]} onClick={() => approve.send({ address: guard, abi: guardAbi, functionName: 'approveToken', args: [token, sp!, maxUint256] })}>Approve UNLIMITED</Btn>
+            <Btn disabled={!ready || !sp || busy(approve) || !p?.[0]} onClick={() => approve.send({ address: guard, abi: guardAbi, functionName: 'approveToken', args: [token, sp!, maxUint256] })}>Approve UNLIMITED</Btn>
             <label className="text-xs text-slate-400">Amount<input value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1 block w-24 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100" /></label>
-            <Btn className="bg-slate-600 text-slate-100 hover:bg-slate-500" disabled={!sp || busy(limited) || !/^\d+(\.\d+)?$/.test(amount)} onClick={() => limited.send({ address: guard, abi: guardAbi, functionName: 'approveToken', args: [token, sp!, parseUnits(amount, 18)] })}>Approve limited</Btn>
+            <Btn className="bg-slate-600 text-slate-100 hover:bg-slate-500" disabled={!ready || !sp || busy(limited) || !/^\d+(\.\d+)?$/.test(amount)} onClick={() => limited.send({ address: guard, abi: guardAbi, functionName: 'approveToken', args: [token, sp!, parseUnits(amount, 18)] })}>Approve limited</Btn>
           </div>
-          {!inSync && <p className="mt-2 text-xs text-amber-400">Tip: wait for the policy to be active on Lasna before approving, or the approval will be ignored.</p>}
+          {!ready && <p className="mt-2 text-xs text-amber-400">Disabled until your Guard is registered and confirmed by Reactive Lasna (see Protection status).</p>}
+          {ready && !inSync && <p className="mt-2 text-xs text-amber-400">Registered, but the latest policy has not been mirrored on Lasna yet; wait for “Policy active” before relying on it.</p>}
           <TxState t={approve} /><TxState t={limited} />
           <p className="mt-3 text-sm">Current on-chain allowance: <span className={`font-mono ${allowance.data === 0n ? 'text-emerald-400' : allowance.data === maxUint256 ? 'text-red-400' : ''}`}>{fmt(allowance.data)}</span></p>
         </Card>

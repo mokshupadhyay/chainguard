@@ -17,7 +17,7 @@ Dashboard steps below describe each provider's usual flow; confirm current UI la
 | `.env.example` templates, `render.yaml`, Cloudflare SPA fallback, docs | Completed |
 | Run the deployment sequence and live loop **after your explicit go** | Pending (needs 1.1–1.6 and 2.1) |
 | Record real tx hashes/addresses into README, `DEMO.md`, env templates | Pending (after live loop) |
-| Factory-gated dynamic-subscription upgrade, if you choose it (2.2) | Pending (your decision) |
+| Factory-gated dynamic-subscription hardening (spam fix) + 27 tests | Completed (uncommitted) |
 | Re-run all tests/builds before each milestone; update this file | Ongoing |
 
 ---
@@ -37,8 +37,8 @@ Dashboard steps below describe each provider's usual flow; confirm current UI la
 | # | Task | Why | Who | Instructions | Depends on | Status |
 |---|---|---|---|---|---|---|
 | 2.1 | **Explicit go** to deploy and spend testnet funds | Policy: no deployment without your approval | You | Reply with an unambiguous "go" after preflight passes. | 1.7 | Pending |
-| 2.2 | Decide: dynamic-subscription upgrade now vs after first live loop | Current wildcard policy subscription lets anyone drain lREACT (see DEPLOYMENT §C) | You decide, Claude implements | Recommended: deploy current contracts first to prove the loop, then upgrade and redeploy (~0.1 lREACT). | — | Pending |
-| 2.3 | Deploy token → reactive → fund → factory | Create the contracts | Both | Claude runs DEPLOYMENT §G steps 2–5; **you enter the keystore password** when prompted (or set `KEYSTORE_PASSWORD_FILE` to a 600-permission file outside the repo). Success: three addresses recorded in `.env`. | 2.1 | Pending |
+| 2.2 | ~~Decide dynamic-subscription upgrade~~ — resolved: the hardened design is implemented, so the first deployment uses it | The wildcard policy subscription was a drain vector (see DEPLOYMENT §C) | Claude | Nothing for you to do. Review the change and ask me to commit it. | — | Completed |
+| 2.3 | Deploy token → reactive → fund → factory | Create the contracts | Both | Claude runs DEPLOYMENT §G steps 2–5b (token → reactive → fund → factory → `setFactory`); **you enter the keystore password** when prompted (or set `KEYSTORE_PASSWORD_FILE` to a 600-permission file outside the repo). Success: three addresses recorded in `.env` and `factory()` on the reactive contract equals `GUARD_FACTORY`. | 2.1 | Pending |
 | 2.4 | Verify deployment | Catch wiring mistakes before spending more | Claude | `./scripts/verify-deployment.sh` → `VERIFY OK`. | 2.3 | Pending |
 | 2.5 | Run the live loop | The core submission evidence | Both | `./scripts/live-loop.sh` (you enter the keystore password). Success: `allowance == 0`, plus a Basescan approval tx, a Reactscan `react` tx emitting `RevokeRequested`, and a Basescan `Revoked` callback tx. | 2.4 | Pending |
 | 2.6 | Record real addresses/hashes in docs | Judges need them | Claude | After 2.5, from the script output only — never invented. | 2.5 | Pending |
@@ -75,7 +75,7 @@ Dashboard steps below describe each provider's usual flow; confirm current UI la
 ## 6. Manual UI and end-to-end testing
 | # | Task | Why | Who | Instructions | Depends on | Status |
 |---|---|---|---|---|---|---|
-| 6.1 | Local UI test | Claude can't test your browser/wallet UX | You | Follow `docs/DEMO.md` against `localhost:5173` with the deployer or a second testnet wallet. Checks: wrong-network banner; Deploy Guard; Mint; policy shows "active on Lasna ✓"; Approve UNLIMITED → loop steps 1–4 complete → allowance 0; Approve limited → no revoke; backend off → UI still works. | 2.3, 4.4 | Pending |
+| 6.1 | Local UI test | Claude can't test your browser/wallet UX | You | Follow `docs/DEMO.md` against `localhost:5173` with the deployer or a second testnet wallet. Checks: wrong-network banner; Deploy Guard; Mint; "Protection status" turns Protected (both steps ✓) and the protected-token list shows the demo token; Approve buttons stay disabled until then; policy shows "active on Lasna ✓"; Approve UNLIMITED → loop steps 1–4 complete → allowance 0; Approve limited → no revoke; backend off → UI still works. | 2.3, 4.4 | Pending |
 | 6.2 | Public UI test | Confirms production config | You | Repeat 6.1 on the Pages URL; check browser console for CORS errors; check `/health`. | 4.3 | Pending |
 | 6.3 | Report issues | I fix what you find | Both | Send me exact symptoms/screenshots; I fix and re-run the checks. | 6.1 | Pending |
 

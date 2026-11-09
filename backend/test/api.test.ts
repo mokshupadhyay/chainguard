@@ -1,7 +1,7 @@
 import { encodeAbiParameters, encodeEventTopics } from "viem";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { guardAbi, reactiveAbi } from "../src/abi.js";
+import { factoryAbi, guardAbi, reactiveAbi } from "../src/abi.js";
 import { createApp } from "../src/app.js";
 import { decodeLog } from "../src/decode.js";
 import { MemoryStore } from "../src/store.js";
@@ -79,8 +79,8 @@ describe("indexer", () => {
     const F = "0x4444444444444444444444444444444444444444";
     const created = {
       address: F, blockNumber: 50n, transactionHash: H, logIndex: 0,
-      topics: encodeEventTopics({ abi: [{ type: "event", name: "GuardCreated", inputs: [{ name: "owner", type: "address", indexed: true }, { name: "guard", type: "address", indexed: true }] }] as any, eventName: "GuardCreated", args: { owner: A, guard: G } } as any),
-      data: "0x",
+      topics: encodeEventTopics({ abi: factoryAbi, eventName: "GuardCreated", args: { owner: A, guard: G } }),
+      data: encodeAbiParameters([{ type: "bool" }, { type: "bool" }, { type: "uint256" }], [true, true, 0n]),
     };
     const client = {
       getBlockNumber: async () => 100n,

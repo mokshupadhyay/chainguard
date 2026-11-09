@@ -18,7 +18,7 @@ export function decodeLog(chainId: number, log: Pick<Log, "topics" | "data" | "t
   const a = d.args;
   switch (d.eventName) {
     case "GuardCreated":
-      return { ...base, kind: "guard_created", guard: a.guard, data: { owner: a.owner } };
+      return { ...base, kind: "guard_created", guard: a.guard, data: { owner: a.owner, enabled: a.enabled, revokeUnlimited: a.revokeUnlimited, maxAllowance: a.maxAllowance.toString() } };
     case "ChainGuardPolicySet":
       return { ...base, kind: "policy_set", guard: log.address, data: { enabled: a.enabled, revokeUnlimited: a.revokeUnlimited, maxAllowance: a.maxAllowance.toString() } };
     case "Revoked":
@@ -27,6 +27,8 @@ export function decodeLog(chainId: number, log: Pick<Log, "topics" | "data" | "t
       return { ...base, kind: "approved", guard: log.address, token: a.token, spender: a.spender, value: a.amount.toString() };
     case "Approval":
       return { ...base, kind: "approval_observed", guard: a.owner, token: log.address, spender: a.spender, value: a.value.toString() };
+    case "GuardRegistered":
+      return { ...base, kind: "guard_registered", guard: a.guard, data: { owner: a.owner, enabled: a.enabled, revokeUnlimited: a.revokeUnlimited, maxAllowance: a.maxAllowance.toString() } };
     case "PolicyMirrored":
       return { ...base, kind: "policy_mirrored", guard: a.guard, data: { enabled: a.enabled, revokeUnlimited: a.revokeUnlimited, maxAllowance: a.maxAllowance.toString() } };
     case "RevokeRequested":

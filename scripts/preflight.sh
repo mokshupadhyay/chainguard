@@ -25,9 +25,21 @@ cast logs --from-block $((HB-1000)) --to-block "$HB" --address 0x476F44b11F5C942
 
 echo "Deployer"
 KS="${HOME}/.foundry/keystores/${DEPLOYER_ACCOUNT}"
+lc() { printf '%s' "$1" | tr 'A-F' 'a-f'; }
 if [ -f "$KS" ]; then
-  KA=$(jq -r '.address' "$KS" | tr 'A-F' 'a-f'); DA=$(echo "${DEPLOYER_ADDRESS#0x}" | tr 'A-F' 'a-f')
-  [ "$KA" = "$DA" ] && ok "keystore '$DEPLOYER_ACCOUNT' matches DEPLOYER_ADDRESS" || bad "keystore address != DEPLOYER_ADDRESS"
+  # Foundry keystores usually have no plaintext "address" field, so ask cast.
+  # cast prompts for the password on the terminal (not captured, never echoed or stored).
+  PW=()
+  [ -n "${KEYSTORE_PASSWORD_FILE:-}" ] && [ -f "${KEYSTORE_PASSWORD_FILE}" ] && PW=(--password-file "$KEYSTORE_PASSWORD_FILE")
+  [ ${#PW[@]} -eq 0 ] && echo "  (cast will ask for the keystore password; it is not stored)"
+  KA=$(cast wallet address --account "$DEPLOYER_ACCOUNT" ${PW[@]+"${PW[@]}"} | tail -n1 | tr -d '[:space:]') || KA=""
+  if ! printf '%s' "$KA" | grep -Eq '^0x[0-9a-fA-F]{40}$'; then
+    bad "could not derive keystore address (wrong password or unreadable keystore)"
+  elif [ "$(lc "$KA")" = "$(lc "${DEPLOYER_ADDRESS}")" ]; then
+    ok "keystore '$DEPLOYER_ACCOUNT' matches DEPLOYER_ADDRESS ($KA)"
+  else
+    bad "keystore address $KA != DEPLOYER_ADDRESS"
+  fi
 else bad "keystore '$DEPLOYER_ACCOUNT' not found (cast wallet import $DEPLOYER_ACCOUNT --interactive)"; fi
 BE=$(cast balance "$DEPLOYER_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC" --ether 2>/dev/null || echo 0)
 LR=$(cast balance "$DEPLOYER_ADDRESS" --rpc-url "$LASNA_RPC" --ether 2>/dev/null || echo 0)

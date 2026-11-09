@@ -1,6 +1,6 @@
 export type EventKind =
   | "guard_created" | "policy_set" | "approved" | "revoked" | "approval_observed"
-  | "policy_mirrored" | "revoke_requested" | "approval_ignored";
+  | "policy_mirrored" | "revoke_requested" | "approval_ignored" | "guard_registered";
 
 export interface EventRow {
   chainId: number;

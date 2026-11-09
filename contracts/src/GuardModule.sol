@@ -27,6 +27,12 @@ contract GuardModule is AbstractCallback {
 
     Policy public policy;
 
+    /// @notice True once Reactive Lasna has confirmed (by callback) that this Guard is registered
+    /// and its scoped subscriptions were requested. Until then approvals/policy changes are blocked.
+    bool public ready;
+    /// @notice Tokens Reactive Lasna confirmed it watches for this Guard. Other tokens are unsupported.
+    mapping(address => bool) public protectedToken;
+
     /// @dev Reactive Lasna subscribes to this event and mirrors the policy into `react()` state.
     event ChainGuardPolicySet(
         address indexed owner, bool enabled, bool revokeUnlimited, uint256 maxAllowance
@@ -34,11 +40,19 @@ contract GuardModule is AbstractCallback {
     event Revoked(address indexed token, address indexed spender, uint256 previousAllowance);
     event Approved(address indexed token, address indexed spender, uint256 amount);
     event Withdrawn(address indexed token, address indexed to, uint256 amount);
+    event ProtectionConfirmed(address indexed reactiveSender, address[] tokens);
 
     error NotOwner();
+    error NotProtected(); // Lasna has not confirmed registration yet
+    error UnsupportedToken(address token); // token is not on the protected allowlist
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
+        _;
+    }
+
+    modifier onlyReady() {
+        if (!ready) revert NotProtected();
         _;
     }
 
@@ -63,13 +77,21 @@ contract GuardModule is AbstractCallback {
     function setPolicy(bool enabled, bool revokeUnlimited, uint256 maxAllowance)
         external
         onlyOwner
+        onlyReady
     {
         policy = Policy(enabled, revokeUnlimited, maxAllowance);
         emit ChainGuardPolicySet(owner, enabled, revokeUnlimited, maxAllowance);
     }
 
     /// @notice Guard (not the EOA) grants the allowance, so the Guard is the approval owner.
-    function approveToken(address token, address spender, uint256 amount) external onlyOwner {
+    /// Blocked until Lasna confirms registration, and only for tokens Lasna actually watches:
+    /// an approval on an unwatched token could never be revoked automatically.
+    function approveToken(address token, address spender, uint256 amount)
+        external
+        onlyOwner
+        onlyReady
+    {
+        if (!protectedToken[token]) revert UnsupportedToken(token);
         IERC20Min(token).approve(spender, amount);
         emit Approved(token, spender, amount);
     }
@@ -104,6 +126,20 @@ contract GuardModule is AbstractCallback {
         onlyCallbackSender(reactiveSender)
     {
         _revoke(token, spender);
+    }
+
+    /// @notice Registration confirmation sent by ChainGuardReactive right after it registers this Guard
+    /// and requests the Guard-scoped subscriptions. Same trust checks as `revoke`.
+    function confirmRegistered(address reactiveSender, address[] calldata tokens)
+        external
+        onlyServiceProvider
+        onlyCallbackSender(reactiveSender)
+    {
+        for (uint256 i; i < tokens.length; i++) {
+            protectedToken[tokens[i]] = true;
+        }
+        ready = true;
+        emit ProtectionConfirmed(reactiveSender, tokens);
     }
 
     function _revoke(address token, address spender) internal {

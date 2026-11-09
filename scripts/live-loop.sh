@@ -13,12 +13,19 @@ echo "1) createGuard (+0.002 ETH callback gas)"; tx "$GUARD_FACTORY" 'createGuar
 GUARD=$(cast call "$GUARD_FACTORY" 'guardsOf(address)(address[])' "$DEPLOYER_ADDRESS" --rpc-url "$BASE_SEPOLIA_RPC" | tr -d '[]' | tr ',' '\n' | tail -1 | tr -d ' ')
 echo "   guard=$GUARD"
 echo "2) mint 1000 demo tokens into the Guard"; tx "$MOCK_ERC20" 'mint(address,uint256)' "$GUARD" 1000ether
-echo "3) wait for policy to be mirrored on Lasna (react() processed ChainGuardPolicySet)"
+echo "3) wait for the Guard to be REGISTERED on Lasna (react() handled the factory's GuardCreated and subscribed to it)"
 for i in $(seq 1 60); do
-  P=$(cast call "$CHAINGUARD_REACTIVE" 'policies(address)(bool,bool,uint256)' "$GUARD" --rpc-url "$LASNA_RPC" | head -1 || true)
-  [ "$P" = true ] && { echo "   mirrored after ~$((i*3))s"; break; }; sleep 3
-  [ "$i" = 60 ] && { echo "   ✗ policy never reached Lasna (check lREACT funding / subscriptions)"; exit 1; }
+  R=$(cast call "$CHAINGUARD_REACTIVE" 'registered(address)(bool)' "$GUARD" --rpc-url "$LASNA_RPC" || true)
+  [ "$R" = true ] && { echo "   registered after ~$((i*3))s"; break; }; sleep 3
+  [ "$i" = 60 ] && { echo "   ✗ Guard never registered (is setFactory done? reactive funded? maxGuards reached? Guard created before setFactory?)"; exit 1; }
 done
+echo "   waiting for Lasna's confirmation callback to reach the Guard (guard.ready() on Base Sepolia) — approvals are blocked on-chain until then"
+for i in $(seq 1 60); do
+  RD=$(cast call "$GUARD" 'ready()(bool)' --rpc-url "$BASE_SEPOLIA_RPC" || true)
+  [ "$RD" = true ] && { echo "   ready after ~$((i*3))s"; break; }; sleep 3
+  [ "$i" = 60 ] && { echo "   ✗ Guard never confirmed (reactive funded? callback proxy debt? check Reactscan for the registration react tx)"; exit 1; }
+done
+echo "   mirrored policy: $(cast call "$CHAINGUARD_REACTIVE" 'policies(address)(bool,bool,uint256)' "$GUARD" --rpc-url "$LASNA_RPC" | tr '\n' ' ')"
 echo "4) UNLIMITED approval by the Guard to $SPENDER"; tx "$GUARD" 'approveToken(address,address,uint256)' "$MOCK_ERC20" "$SPENDER" "$MAX"
 echo "   allowance now: $(cast call "$MOCK_ERC20" 'allowance(address,address)(uint256)' "$GUARD" "$SPENDER" --rpc-url "$BASE_SEPOLIA_RPC")"
 echo "5) waiting for reactive revoke (up to 3 min)"

@@ -8,6 +8,7 @@ import {ChainGuardReactive} from "../src/reactive/ChainGuardReactive.sol";
 /// Requires MOCK_ERC20 (deployed first on Base Sepolia) - token address is known before the factory.
 contract DeployLasna is Script {
     uint256 constant ORIGIN_CHAIN_ID = 84532; // Base Sepolia (fixed: not configurable)
+    uint256 constant MAX_GUARDS = 50; // bounds runtime-subscription work an open factory can force on the reactive contract
 
     function run() external {
         require(block.chainid == 5318007, "ChainGuard: Reactive Lasna (5318007) only");
@@ -15,7 +16,7 @@ contract DeployLasna is Script {
         address[] memory tokens = new address[](1);
         tokens[0] = token;
         vm.startBroadcast();
-        ChainGuardReactive rc = new ChainGuardReactive(ORIGIN_CHAIN_ID, tokens);
+        ChainGuardReactive rc = new ChainGuardReactive(ORIGIN_CHAIN_ID, tokens, MAX_GUARDS);
         vm.stopBroadcast();
         console.log("ChainGuardReactive:", address(rc));
     }
