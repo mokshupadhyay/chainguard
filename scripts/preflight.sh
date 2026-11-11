@@ -49,5 +49,6 @@ awk "BEGIN{exit !($LR >= 2.5)}" && ok "lREACT sufficient (>=2.5)" || warn "lREAC
 
 echo "Build & tests"
 [ -d contracts/lib/reactive-lib-omni/src ] && ok "reactive-lib-omni present" || bad "run ./scripts/install-deps.sh"
-(cd contracts && forge test -q >/dev/null 2>&1) && ok "forge test passes" || bad "forge test FAILS"
+FORGE=$(./scripts/find-forge.sh 2>/dev/null) || { bad "Foundry forge not found (another 'forge' on PATH?) — see docs/DEPLOYMENT.md §G"; FORGE=""; }
+[ -n "$FORGE" ] && { (cd contracts && "$FORGE" test -q >/dev/null 2>&1) && ok "forge test passes" || bad "forge test FAILS"; }
 [ "$fail" = 0 ] && echo "PREFLIGHT OK" || { echo "PREFLIGHT FAILED"; exit 1; }

@@ -11,6 +11,10 @@ export const guardAbi = parseAbi([
   'function approveToken(address token, address spender, uint256 amount)',
   'function ready() view returns (bool)',
   'function protectedToken(address token) view returns (bool)',
+  'function restrictSpenders() view returns (bool)',
+  'function allowedSpender(address spender) view returns (bool)',
+  'function setSpenderMode(bool restrictToAllowlist)',
+  'function setSpenderAllowed(address spender, bool allowed)',
   'function revokeManually(address token, address spender)',
   'function withdraw(address token, address to, uint256 amount)',
   'event ProtectionConfirmed(address indexed reactiveSender, address[] tokens)',
@@ -27,5 +31,7 @@ export const reactiveAbi = parseAbi([
   'function registered(address guard) view returns (bool)',
   'function tokens() view returns (address[])',
   'function policies(address guard) view returns (bool enabled, bool revokeUnlimited, uint256 maxAllowance)',
+  'function restrictSpenders(address guard) view returns (bool)',
+  'function spenderAllowed(address guard, address spender) view returns (bool)',
   'event RevokeRequested(address indexed guard, address indexed token, address indexed spender, uint256 value, string reason)',
 ])

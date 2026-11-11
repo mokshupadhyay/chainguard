@@ -18,12 +18,11 @@ import {AbstractReactive} from "@reactive/src/base/AbstractReactive.sol";
 ///  3. Everything else is ignored, and re-checked inside `react()` as defense in depth.
 contract ChainGuardReactive is AbstractReactive {
     // keccak256 of the event signatures (computed, not hand-copied)
-    uint256 public constant APPROVAL_TOPIC =
-        uint256(keccak256("Approval(address,address,uint256)"));
-    uint256 public constant POLICY_TOPIC =
-        uint256(keccak256("ChainGuardPolicySet(address,bool,bool,uint256)"));
-    uint256 public constant GUARD_CREATED_TOPIC =
-        uint256(keccak256("GuardCreated(address,address,bool,bool,uint256)"));
+    uint256 public constant APPROVAL_TOPIC = uint256(keccak256("Approval(address,address,uint256)"));
+    uint256 public constant POLICY_TOPIC = uint256(keccak256("ChainGuardPolicySet(address,bool,bool,uint256)"));
+    uint256 public constant GUARD_CREATED_TOPIC = uint256(keccak256("GuardCreated(address,address,bool,bool,uint256)"));
+    uint256 public constant SPENDER_MODE_TOPIC = uint256(keccak256("SpenderModeSet(bool)"));
+    uint256 public constant SPENDER_RULE_TOPIC = uint256(keccak256("SpenderRuleSet(address,bool)"));
     uint256 public constant MAX_TOKENS = 8;
 
     uint256 public immutable ORIGIN_CHAIN_ID;
@@ -44,29 +43,21 @@ contract ChainGuardReactive is AbstractReactive {
     mapping(address => bool) public registered; // Guards created by the trusted factory
     uint256 public guardCount;
     mapping(address => Policy) public policies; // keyed by registered Guard
+    mapping(address => bool) public restrictSpenders; // Guard => only allowlisted spenders may hold approvals
+    mapping(address => mapping(address => bool)) public spenderAllowed; // Guard => spender => allowed
 
     event FactorySet(address indexed factory);
     event GuardRegistered(
-        address indexed owner,
-        address indexed guard,
-        bool enabled,
-        bool revokeUnlimited,
-        uint256 maxAllowance
+        address indexed owner, address indexed guard, bool enabled, bool revokeUnlimited, uint256 maxAllowance
     );
     event GuardRejected(address indexed guard, string reason);
-    event PolicyMirrored(
-        address indexed guard, bool enabled, bool revokeUnlimited, uint256 maxAllowance
-    );
+    event PolicyMirrored(address indexed guard, bool enabled, bool revokeUnlimited, uint256 maxAllowance);
+    event SpenderModeMirrored(address indexed guard, bool restrictToAllowlist);
+    event SpenderRuleMirrored(address indexed guard, address indexed spender, bool allowed);
     event RevokeRequested(
-        address indexed guard,
-        address indexed token,
-        address indexed spender,
-        uint256 value,
-        string reason
+        address indexed guard, address indexed token, address indexed spender, uint256 value, string reason
     );
-    event ApprovalIgnored(
-        address indexed guard, address indexed token, address indexed spender, uint256 value
-    );
+    event ApprovalIgnored(address indexed guard, address indexed token, address indexed spender, uint256 value);
 
     error NotAdmin();
     error FactoryAlreadySet();
@@ -96,12 +87,7 @@ contract ChainGuardReactive is AbstractReactive {
         if (factory_ == address(0)) revert BadConfig();
         factory = factory_;
         SYSTEM.subscribe(
-            ORIGIN_CHAIN_ID,
-            factory_,
-            GUARD_CREATED_TOPIC,
-            REACTIVE_IGNORE,
-            REACTIVE_IGNORE,
-            REACTIVE_IGNORE
+            ORIGIN_CHAIN_ID, factory_, GUARD_CREATED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
         );
         emit FactorySet(factory_);
     }
@@ -121,6 +107,8 @@ contract ChainGuardReactive is AbstractReactive {
         if (log_.chainId != ORIGIN_CHAIN_ID) return;
         if (log_.topic0 == GUARD_CREATED_TOPIC) return _onGuardCreated(log_);
         if (log_.topic0 == POLICY_TOPIC) return _onPolicy(log_);
+        if (log_.topic0 == SPENDER_MODE_TOPIC) return _onSpenderMode(log_);
+        if (log_.topic0 == SPENDER_RULE_TOPIC) return _onSpenderRule(log_);
         // ERC-20 Approval has 3 topics (LOG3); ERC-721 Approval has 4, so this filters NFTs out.
         if (log_.topic0 == APPROVAL_TOPIC && log_.opCode == 3) return _onApproval(log_);
     }
@@ -134,24 +122,18 @@ contract ChainGuardReactive is AbstractReactive {
             emit GuardRejected(guard, "max-guards");
             return;
         }
-        (bool enabled, bool revokeUnlimited, uint256 cap) =
-            abi.decode(log_.data, (bool, bool, uint256));
+        (bool enabled, bool revokeUnlimited, uint256 cap) = abi.decode(log_.data, (bool, bool, uint256));
         registered[guard] = true;
         guardCount++;
         policies[guard] = Policy(enabled, revokeUnlimited, cap);
 
         // Runtime subscriptions, scoped to this Guard only.
-        SYSTEM.subscribe(
-            ORIGIN_CHAIN_ID, guard, POLICY_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
-        );
+        SYSTEM.subscribe(ORIGIN_CHAIN_ID, guard, POLICY_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        SYSTEM.subscribe(ORIGIN_CHAIN_ID, guard, SPENDER_MODE_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        SYSTEM.subscribe(ORIGIN_CHAIN_ID, guard, SPENDER_RULE_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
         for (uint256 i; i < _tokens.length; i++) {
             SYSTEM.subscribe(
-                ORIGIN_CHAIN_ID,
-                _tokens[i],
-                APPROVAL_TOPIC,
-                uint256(uint160(guard)),
-                REACTIVE_IGNORE,
-                REACTIVE_IGNORE
+                ORIGIN_CHAIN_ID, _tokens[i], APPROVAL_TOPIC, uint256(uint160(guard)), REACTIVE_IGNORE, REACTIVE_IGNORE
             );
         }
         // Readiness handshake: tell the Guard (on the origin chain) it is registered. The Guard blocks
@@ -161,9 +143,7 @@ contract ChainGuardReactive is AbstractReactive {
                 chainId: log_.chainId,
                 recipient: guard,
                 gasLimit: callbackGasLimit,
-                payload: abi.encodeWithSignature(
-                    "confirmRegistered(address,address[])", address(0), _tokens
-                )
+                payload: abi.encodeWithSignature("confirmRegistered(address,address[])", address(0), _tokens)
             })
         );
         emit GuardRegistered(address(uint160(log_.topic1)), guard, enabled, revokeUnlimited, cap);
@@ -172,10 +152,23 @@ contract ChainGuardReactive is AbstractReactive {
     function _onPolicy(LogRecord calldata log_) internal {
         // Only a registered Guard may set its own policy; any other emitter is ignored.
         if (!registered[log_.contractAddress]) return;
-        (bool enabled, bool revokeUnlimited, uint256 cap) =
-            abi.decode(log_.data, (bool, bool, uint256));
+        (bool enabled, bool revokeUnlimited, uint256 cap) = abi.decode(log_.data, (bool, bool, uint256));
         policies[log_.contractAddress] = Policy(enabled, revokeUnlimited, cap);
         emit PolicyMirrored(log_.contractAddress, enabled, revokeUnlimited, cap);
+    }
+
+    function _onSpenderMode(LogRecord calldata log_) internal {
+        if (!registered[log_.contractAddress]) return;
+        restrictSpenders[log_.contractAddress] = abi.decode(log_.data, (bool));
+        emit SpenderModeMirrored(log_.contractAddress, restrictSpenders[log_.contractAddress]);
+    }
+
+    function _onSpenderRule(LogRecord calldata log_) internal {
+        if (!registered[log_.contractAddress]) return;
+        address spender = address(uint160(log_.topic1));
+        bool allowed = abi.decode(log_.data, (bool));
+        spenderAllowed[log_.contractAddress][spender] = allowed;
+        emit SpenderRuleMirrored(log_.contractAddress, spender, allowed);
     }
 
     function _onApproval(LogRecord calldata log_) internal {
@@ -185,28 +178,29 @@ contract ChainGuardReactive is AbstractReactive {
         address spender = address(uint160(log_.topic2));
         uint256 value = abi.decode(log_.data, (uint256));
 
-        (bool revoke, string memory reason) = _evaluate(policies[guard], value);
+        (bool revoke, string memory reason) = _evaluate(guard, spender, value);
         if (!revoke) {
             emit ApprovalIgnored(guard, log_.contractAddress, spender, value);
             return;
         }
         // First payload argument is a placeholder; the network overwrites it with this contract's address.
-        bytes memory payload = abi.encodeWithSignature(
-            "revoke(address,address,address)", address(0), log_.contractAddress, spender
-        );
+        bytes memory payload =
+            abi.encodeWithSignature("revoke(address,address,address)", address(0), log_.contractAddress, spender);
         SYSTEM.requestCallbackV_1_0(
             ISystemContract.CallbackConfiguration_V_1_0({
-                chainId: log_.chainId,
-                recipient: guard,
-                gasLimit: callbackGasLimit,
-                payload: payload
+                chainId: log_.chainId, recipient: guard, gasLimit: callbackGasLimit, payload: payload
             })
         );
         emit RevokeRequested(guard, log_.contractAddress, spender, value, reason);
     }
 
-    function _evaluate(Policy memory p, uint256 value) internal pure returns (bool, string memory) {
+    function _evaluate(address guard, address spender, uint256 value) internal view returns (bool, string memory) {
+        Policy memory p = policies[guard];
         if (!p.enabled) return (false, "");
+        if (value == 0) return (false, ""); // a revocation itself must never re-trigger a revoke
+        if (restrictSpenders[guard] && !spenderAllowed[guard][spender]) {
+            return (true, "spender-not-allowed");
+        }
         if (p.revokeUnlimited && value == type(uint256).max) return (true, "unlimited");
         if (p.maxAllowance > 0 && value > p.maxAllowance) return (true, "over-cap");
         return (false, "");

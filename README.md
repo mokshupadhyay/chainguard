@@ -2,15 +2,15 @@
 
 Track: **Set It and Forget It** (Reactive Omni Buildathon).
 
-A reactive on-chain watchdog for token approvals. Your **Guard** (a vault you own on Base Sepolia) holds your tokens. A **reactive contract on Reactive Lasna** watches approvals, evaluates your policy inside `react()`, and — when a dangerous (e.g. unlimited) approval appears — triggers a callback that makes the Guard revoke it. No keeper bot.
+A reactive on-chain watchdog for token approvals. Your **Guard** (a vault you own on Base Sepolia) holds your tokens. A **reactive contract on Reactive Lasna** watches approvals, evaluates your policy inside `react()` (unlimited approvals, an allowance cap, and an optional trusted-spender allowlist), and — when a dangerous (e.g. unlimited) approval appears — triggers a callback that makes the Guard revoke it. No keeper bot.
 
 > **Honest scope:** ChainGuard cannot revoke approvals for a plain EOA. Tokens live in your Guard, which is the approver.
 
 ## Status
 | Item | State |
 |---|---|
-| Contracts + Foundry tests (36) | ✅ passing locally |
-| Backend API (9 tests) / Frontend build | ✅ passing locally |
+| Contracts + Foundry tests (45) | ✅ passing locally |
+| Backend API (10 tests) / Frontend build | ✅ passing locally |
 | Testnet deployment & live loop | ⏳ **not yet done** |
 | Contract addresses / tx hashes | _none yet — will be added only from real deployments_ |
 | Public URL | _pending_ |
@@ -25,11 +25,11 @@ Solidity + Foundry · Vite/React/TS/Tailwind/wagmi/viem · Express/TS/Zod · Sup
 ```bash
 cp .env.example .env            # fill in later; never commit
 ./scripts/install-deps.sh       # pinned reactive-lib-omni (not vendored; see docs/DEPLOYMENT.md §D)
-cd contracts && forge test      # 36 tests
+cd contracts && forge test      # 45 tests (see note below if `forge` is not Foundry)
 cd ../backend && npm i && npm test && npm run dev     # in-memory store if DATABASE_URL unset
 cd ../frontend && cp .env.example .env && npm i && npm run dev   # http://localhost:5173
 ```
-Tests/checks: `forge test`; backend `npm run typecheck && npm run lint && npm test && npm run build`; frontend `npm run build && npm run lint`.
+Tests/checks: `forge test` (if `forge test` says "'test' is not a Forge command", another tool named `forge` — e.g. Atlassian Forge CLI — shadows Foundry; run `$(./scripts/find-forge.sh) test`); backend `npm run typecheck && npm run lint && npm test && npm run build`; frontend `npm run build && npm run lint`.
 
 ## Deploy / demo
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) · [docs/DEMO.md](docs/DEMO.md)

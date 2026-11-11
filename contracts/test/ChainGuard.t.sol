@@ -57,10 +57,7 @@ contract ChainGuardTest is Test {
         g = factory.createGuard();
         Vm.Log[] memory logs = vm.getRecordedLogs();
         for (uint256 i; i < logs.length; i++) {
-            if (
-                logs[i].emitter == address(factory)
-                    && logs[i].topics[0] == bytes32(rc.GUARD_CREATED_TOPIC())
-            ) {
+            if (logs[i].emitter == address(factory) && logs[i].topics[0] == bytes32(rc.GUARD_CREATED_TOPIC())) {
                 _react(_fromVmLog(logs[i]));
             }
         }
@@ -83,14 +80,11 @@ contract ChainGuardTest is Test {
         );
     }
 
-    function _log(
-        uint256 topic0,
-        uint256 t1,
-        uint256 t2,
-        bytes memory data,
-        address emitter,
-        uint256 opCode
-    ) internal pure returns (IReactive.LogRecord memory) {
+    function _log(uint256 topic0, uint256 t1, uint256 t2, bytes memory data, address emitter, uint256 opCode)
+        internal
+        pure
+        returns (IReactive.LogRecord memory)
+    {
         return IReactive.LogRecord(ORIGIN, emitter, topic0, t1, t2, 0, data, 1, opCode, 0, 0xabc, 0);
     }
 
@@ -99,14 +93,7 @@ contract ChainGuardTest is Test {
         view
         returns (IReactive.LogRecord memory)
     {
-        return _log(
-            rc.APPROVAL_TOPIC(),
-            uint256(uint160(owner_)),
-            uint256(uint160(spender)),
-            abi.encode(value),
-            tkn,
-            3
-        );
+        return _log(rc.APPROVAL_TOPIC(), uint256(uint160(owner_)), uint256(uint160(spender)), abi.encode(value), tkn, 3);
     }
 
     function _approvalLog(address owner_, address spender, uint256 value)
@@ -122,9 +109,7 @@ contract ChainGuardTest is Test {
         view
         returns (IReactive.LogRecord memory)
     {
-        return _log(
-            rc.POLICY_TOPIC(), uint256(uint160(user)), 0, abi.encode(en, unl, cap), emitter, 2
-        );
+        return _log(rc.POLICY_TOPIC(), uint256(uint160(user)), 0, abi.encode(en, unl, cap), emitter, 2);
     }
 
     function _mirrorPolicy(bool en, bool unl, uint256 cap) internal {
@@ -137,11 +122,7 @@ contract ChainGuardTest is Test {
     }
 
     /// @dev a GuardCreated-shaped log, to be emitted by `emitter`
-    function _fakeGuardCreated(address emitter, address newGuard)
-        internal
-        view
-        returns (IReactive.LogRecord memory)
-    {
+    function _fakeGuardCreated(address emitter, address newGuard) internal view returns (IReactive.LogRecord memory) {
         return _log(
             rc.GUARD_CREATED_TOPIC(),
             uint256(uint160(attacker)),
@@ -155,16 +136,9 @@ contract ChainGuardTest is Test {
     // ------------------------------------------------------------ constants / ownership
     function test_topicsMatchEventSignatures() public view {
         assertEq(rc.APPROVAL_TOPIC(), uint256(keccak256("Approval(address,address,uint256)")));
-        assertEq(
-            rc.POLICY_TOPIC(), uint256(keccak256("ChainGuardPolicySet(address,bool,bool,uint256)"))
-        );
-        assertEq(
-            rc.GUARD_CREATED_TOPIC(),
-            uint256(keccak256("GuardCreated(address,address,bool,bool,uint256)"))
-        );
-        assertEq(
-            rc.APPROVAL_TOPIC(), 0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925
-        );
+        assertEq(rc.POLICY_TOPIC(), uint256(keccak256("ChainGuardPolicySet(address,bool,bool,uint256)")));
+        assertEq(rc.GUARD_CREATED_TOPIC(), uint256(keccak256("GuardCreated(address,address,bool,bool,uint256)")));
+        assertEq(rc.APPROVAL_TOPIC(), 0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925);
     }
 
     function test_guardIsApprovalOwner() public {
@@ -281,13 +255,14 @@ contract ChainGuardTest is Test {
         assertTrue(en);
         assertTrue(unl);
         assertEq(cap, 0);
-        // subs: [0] factory GuardCreated, [1] guard policy (emitter = guard), [2] token Approval owner = guard
-        assertEq(sys.subsLength(), 3);
+        // subs: [0] factory GuardCreated, [1] guard policy, [2] spender mode, [3] spender rule (all emitter = guard),
+        // [4] token Approval owner = guard
+        assertEq(sys.subsLength(), 5);
         (uint256 c1, address a1, uint256 t01,) = sys.subs(1);
         assertEq(c1, ORIGIN);
         assertEq(a1, address(guard));
         assertEq(t01, rc.POLICY_TOPIC());
-        (, address a2, uint256 t02, uint256 t12) = sys.subs(2);
+        (, address a2, uint256 t02, uint256 t12) = sys.subs(4);
         assertEq(a2, address(token));
         assertEq(t02, rc.APPROVAL_TOPIC());
         assertEq(t12, uint256(uint160(address(guard))));
@@ -304,9 +279,9 @@ contract ChainGuardTest is Test {
             if (logs[i].emitter == address(factory)) rec = _fromVmLog(logs[i]);
         }
         _react(rec);
-        assertEq(sys.subsLength(), n + 2);
+        assertEq(sys.subsLength(), n + 4);
         _react(rec); // replay
-        assertEq(sys.subsLength(), n + 2);
+        assertEq(sys.subsLength(), n + 4);
         assertEq(rc.guardCount(), 2);
     }
 
@@ -394,8 +369,7 @@ contract ChainGuardTest is Test {
         assertEq(chainId, ORIGIN);
         assertEq(recipient, address(guard));
         assertGt(gas, 0);
-        (address placeholder, address tk, address sp) =
-            abi.decode(_args(payload), (address, address, address));
+        (address placeholder, address tk, address sp) = abi.decode(_args(payload), (address, address, address));
         assertEq(bytes4(payload), GuardModule.revoke.selector);
         assertEq(placeholder, address(0));
         assertEq(tk, address(token));
@@ -451,14 +425,12 @@ contract ChainGuardTest is Test {
         sys.resetCallbacks();
         GuardModule g = _newUnconfirmedGuard();
         assertEq(sys.callbackCount(), 1);
-        (uint256 chainId, address recipient, uint64 gasLimit, bytes memory payload) =
-            sys.lastCallback();
+        (uint256 chainId, address recipient, uint64 gasLimit, bytes memory payload) = sys.lastCallback();
         assertEq(chainId, ORIGIN);
         assertEq(recipient, address(g));
         assertGe(gasLimit, 100_000); // callbacks below 100k gas are ignored by the network
         assertEq(bytes4(payload), GuardModule.confirmRegistered.selector);
-        (address placeholder, address[] memory toks) =
-            abi.decode(_args(payload), (address, address[]));
+        (address placeholder, address[] memory toks) = abi.decode(_args(payload), (address, address[]));
         assertEq(placeholder, address(0)); // network overwrites it with the reactive address
         assertEq(toks.length, 1);
         assertEq(toks[0], address(token));
@@ -531,9 +503,7 @@ contract ChainGuardTest is Test {
         assertTrue(guard.protectedToken(address(token)));
         assertFalse(guard.protectedToken(address(other)));
         vm.prank(user);
-        vm.expectRevert(
-            abi.encodeWithSelector(GuardModule.UnsupportedToken.selector, address(other))
-        );
+        vm.expectRevert(abi.encodeWithSelector(GuardModule.UnsupportedToken.selector, address(other)));
         guard.approveToken(address(other), attacker, 1);
     }
 
@@ -572,5 +542,117 @@ contract ChainGuardTest is Test {
         _react(rec);
         _react(rec);
         assertEq(sys.callbackCount(), 1);
+    }
+
+    // ------------------------------------------------------------ spender allowlist (enforced on Lasna)
+    function _modeLog(address emitter, bool on) internal view returns (IReactive.LogRecord memory) {
+        return _log(rc.SPENDER_MODE_TOPIC(), 0, 0, abi.encode(on), emitter, 1);
+    }
+
+    function _ruleLog(address emitter, address spender, bool ok) internal view returns (IReactive.LogRecord memory) {
+        return _log(rc.SPENDER_RULE_TOPIC(), uint256(uint160(spender)), 0, abi.encode(ok), emitter, 2);
+    }
+
+    function test_spenderTopicsMatchEventSignatures() public view {
+        assertEq(rc.SPENDER_MODE_TOPIC(), uint256(keccak256("SpenderModeSet(bool)")));
+        assertEq(rc.SPENDER_RULE_TOPIC(), uint256(keccak256("SpenderRuleSet(address,bool)")));
+    }
+
+    function test_guardSpenderSettersOnlyOwnerAndReady() public {
+        vm.prank(attacker);
+        vm.expectRevert(GuardModule.NotOwner.selector);
+        guard.setSpenderMode(true);
+        vm.prank(attacker);
+        vm.expectRevert(GuardModule.NotOwner.selector);
+        guard.setSpenderAllowed(attacker, true);
+
+        vm.recordLogs();
+        vm.startPrank(user);
+        guard.setSpenderMode(true);
+        guard.setSpenderAllowed(attacker, true);
+        vm.stopPrank();
+        assertTrue(guard.restrictSpenders());
+        assertTrue(guard.allowedSpender(attacker));
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        assertEq(logs[0].topics[0], keccak256("SpenderModeSet(bool)"));
+        assertEq(logs[1].topics[0], keccak256("SpenderRuleSet(address,bool)"));
+    }
+
+    function test_unconfirmedGuardCannotSetSpenderRules() public {
+        address g = _createViaFactory(user);
+        vm.prank(user);
+        vm.expectRevert(GuardModule.NotProtected.selector);
+        GuardModule(payable(g)).setSpenderMode(true);
+    }
+
+    function test_registrationSubscribesToSpenderEventsOfThatGuardOnly() public view {
+        uint256 modeSubs;
+        uint256 ruleSubs;
+        for (uint256 i; i < sys.subsLength(); i++) {
+            (, address c, uint256 t0,) = sys.subs(i);
+            if (t0 == rc.SPENDER_MODE_TOPIC()) {
+                modeSubs++;
+                assertEq(c, address(guard));
+            }
+            if (t0 == rc.SPENDER_RULE_TOPIC()) {
+                ruleSubs++;
+                assertEq(c, address(guard));
+            }
+        }
+        assertEq(modeSubs, 1);
+        assertEq(ruleSubs, 1);
+    }
+
+    function test_spenderRestrictionRevokesSmallApprovalToUnknownSpender() public {
+        _mirrorPolicy(true, true, 0); // only unlimited is dangerous...
+        _react(_approvalLog(address(guard), attacker, 5 ether));
+        assertEq(sys.callbackCount(), 0); // ...so a small approval is fine without the allowlist
+        _react(_modeLog(address(guard), true));
+        _react(_approvalLog(address(guard), attacker, 5 ether));
+        assertEq(sys.callbackCount(), 1);
+        (, address recipient,, bytes memory payload) = sys.lastCallback();
+        assertEq(recipient, address(guard));
+        (, address tk, address sp) = abi.decode(_args(payload), (address, address, address));
+        assertEq(tk, address(token));
+        assertEq(sp, attacker);
+    }
+
+    function test_allowlistedSpenderKeepsSmallButNotUnlimitedApproval() public {
+        _mirrorPolicy(true, true, 0);
+        _react(_modeLog(address(guard), true));
+        _react(_ruleLog(address(guard), attacker, true));
+        _react(_approvalLog(address(guard), attacker, 5 ether));
+        assertEq(sys.callbackCount(), 0);
+        _react(_approvalLog(address(guard), attacker, type(uint256).max)); // unlimited rule still applies
+        assertEq(sys.callbackCount(), 1);
+        _react(_ruleLog(address(guard), attacker, false)); // removing it re-arms the restriction
+        _react(_approvalLog(address(guard), attacker, 5 ether));
+        assertEq(sys.callbackCount(), 2);
+    }
+
+    function test_zeroApprovalNeverTriggersRevoke() public {
+        _mirrorPolicy(true, true, 0);
+        _react(_modeLog(address(guard), true));
+        _react(_approvalLog(address(guard), attacker, 0)); // our own revoke emits Approval(..., 0)
+        assertEq(sys.callbackCount(), 0);
+    }
+
+    function test_disabledPolicyOverridesSpenderRestriction() public {
+        _mirrorPolicy(false, true, 0);
+        _react(_modeLog(address(guard), true));
+        _react(_approvalLog(address(guard), attacker, 5 ether));
+        assertEq(sys.callbackCount(), 0);
+    }
+
+    function test_spoofedSpenderEventsFromUnregisteredEmitterIgnored() public {
+        address fake = makeAddr("fakeGuard");
+        _react(_modeLog(fake, true));
+        _react(_ruleLog(fake, attacker, true));
+        assertFalse(rc.restrictSpenders(fake));
+        assertFalse(rc.spenderAllowed(fake, attacker));
+        // and they cannot touch a real Guard's rules
+        _react(_modeLog(address(guard), true));
+        _react(_ruleLog(fake, attacker, true));
+        assertFalse(rc.spenderAllowed(address(guard), attacker));
     }
 }

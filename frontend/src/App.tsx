@@ -120,6 +120,9 @@ function GuardView({ guard, owner, refresh }: { guard: `0x${string}`; owner: `0x
   })
   const bal = useReadContract({ chainId: baseSepolia.id, address: token, abi: erc20Abi, functionName: 'balanceOf', args: [guard], query: poll })
   const allowance = useReadContract({ chainId: baseSepolia.id, address: token, abi: erc20Abi, functionName: 'allowance', args: [guard, sp ?? zeroAddress], query: { ...poll, enabled: !!sp } })
+  const restrictOn = useReadContract({ chainId: baseSepolia.id, address: guard, abi: guardAbi, functionName: 'restrictSpenders', query: poll })
+  const restrictMirror = useReadContract({ chainId: lasna.id, address: cfg.reactive, abi: reactiveAbi, functionName: 'restrictSpenders', args: [guard], query: { refetchInterval: 5000 } })
+  const spenderOk = useReadContract({ chainId: baseSepolia.id, address: guard, abi: guardAbi, functionName: 'allowedSpender', args: [sp ?? zeroAddress], query: { ...poll, enabled: !!sp } })
   const events = useLoopEvents(guard, cfg.reactive)
   const apiTxs = useQuery({ queryKey: ['txs', guard], queryFn: () => fetchTxs(guard), refetchInterval: 10000 })
 
@@ -127,6 +130,8 @@ function GuardView({ guard, owner, refresh }: { guard: `0x${string}`; owner: `0x
   const approve = useTx('approve-unlimited', guard, refresh)
   const setPol = useTx('set-policy', guard, refresh)
   const limited = useTx('approve-limited', guard, refresh)
+  const mode = useTx('set-spender-mode', guard, refresh)
+  const rule = useTx('set-spender-allowed', guard, refresh)
 
   const p = policy.data
   const m = mirrored.data
@@ -179,6 +184,14 @@ function GuardView({ guard, owner, refresh }: { guard: `0x${string}`; owner: `0x
         <TxState t={setPol} />
       </Card>
 
+      <Card title="Trusted spenders (allowlist)">
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={restrictOn.data ?? false} disabled={!ready || busy(mode)} onChange={(e) => mode.send({ address: guard, abi: guardAbi, functionName: 'setSpenderMode', args: [e.target.checked] })} /> Revoke approvals to any spender not on the list (even small ones)</label>
+        <p className="mt-2 text-xs text-slate-500">The spender in the box below is {spenderOk.data ? 'ON' : 'not on'} your list.</p>
+        <Btn className="mt-2" disabled={!ready || !sp || busy(rule)} onClick={() => rule.send({ address: guard, abi: guardAbi, functionName: 'setSpenderAllowed', args: [sp!, !spenderOk.data] })}>{spenderOk.data ? 'Remove spender from list' : 'Trust this spender'}</Btn>
+        <p className={`mt-2 text-xs ${restrictMirror.data === restrictOn.data ? 'text-emerald-400' : 'text-amber-400'}`}>{restrictMirror.data === undefined ? 'Reading Lasna…' : restrictMirror.data === restrictOn.data ? 'Mode active on Reactive Lasna ✓' : 'Waiting for the mode to reach Reactive Lasna…'}</p>
+        <TxState t={mode} /><TxState t={rule} />
+      </Card>
+
       <div className="md:col-span-2">
         <Card title="Try it: create a dangerous approval">
           <p className="mb-3 text-sm text-slate-400">Your Guard grants an allowance to a spender. If it is unlimited, ChainGuard should revoke it on its own within seconds.</p>
@@ -221,11 +234,11 @@ const label = (e: ChainEvt) => ({ approved: `Guard approved ${fmt(e.value)}`, re
 
 function Loop({ events, loading, error, spender, allowance }: { events?: ChainEvt[]; loading: boolean; error: boolean; spender?: string; allowance?: bigint }) {
   const mine = (events ?? []).filter((e) => !spender || e.spender.toLowerCase() === spender.toLowerCase())
-  const ap = mine.find((e) => e.kind === 'approved' && e.value === maxUint256)
+  const ap = mine.find((e) => e.kind === 'approved' && e.value !== 0n)
   const rx = ap && mine.find((e) => e.kind === 'reactive' && e.ts >= ap.ts - 2)
   const rv = ap && mine.find((e) => e.kind === 'revoked' && e.block >= ap.block)
   const steps = [
-    { n: 1, t: 'Unlimited approval on Base Sepolia', done: !!ap, ev: ap },
+    { n: 1, t: 'Approval granted on Base Sepolia', done: !!ap, ev: ap },
     { n: 2, t: 'Reactive Lasna ran react() and decided to revoke', done: !!rx, ev: rx },
     { n: 3, t: 'Callback executed: Guard revoked on Base Sepolia', done: !!rv, ev: rv },
     { n: 4, t: 'Allowance is 0 on-chain', done: !!rv && allowance === 0n, ev: undefined },
@@ -244,7 +257,7 @@ function Loop({ events, loading, error, spender, allowance }: { events?: ChainEv
         ))}
       </ol>
       {loading && <p className="mt-2 text-xs text-slate-500">Loading events…</p>}
-      {!ap && !loading && <p className="mt-3 text-xs text-slate-500">Create an unlimited approval above to watch the loop run.</p>}
+      {!ap && !loading && <p className="mt-3 text-xs text-slate-500">Create an approval above (unlimited, or any approval to an untrusted spender) to watch the loop run.</p>}
     </Card>
   )
 }

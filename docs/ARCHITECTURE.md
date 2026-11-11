@@ -30,9 +30,13 @@ flowchart LR
 - **Residual cost model.** A registered Guard's owner can still cause `react()` runs for their *own* Guard (e.g. by approving repeatedly); the cap bounds the number of such owners. A production system would charge owners (prepaid fee per Guard).
 - **Known limits.** A policy change emitted before the Guard's runtime subscription is active (first seconds after creation) is not seen; the UI shows when Lasna's mirrored policy differs. Tokens added later are not watched for existing Guards.
 
+## Why this needs Reactive (and what it does not claim)
+The owner can always approve something unwise, and an on-chain `require` inside the Guard could block *unlimited* approvals. What an on-chain check cannot do is a policy that is **changed and enforced after the fact**: the trusted-spender allowlist is evaluated on Lasna against the live `Approval` stream, so removing a spender from the list (or turning the mode on) means the next approval to it is cleaned up without any keeper bot. Limits: a revoke lands after the approval, not before — a bot that drains in the same moment is not stopped; ChainGuard bounds the window for approvals that are forgotten or granted through a tool you did not fully inspect.
+
 ## Subscriptions
+0. (Policy surface) The Guard publishes `ChainGuardPolicySet`, `SpenderModeSet` and `SpenderRuleSet`; `react()` mirrors all three and evaluates them together with the `Approval`.
 1. `setFactory(factory)` → `GuardCreated` of that one factory contract only.
-2. Per registered Guard (added at runtime inside `react()`): the Guard's `ChainGuardPolicySet`, and `Approval` on each allowlisted token filtered to `owner = guard`.
+2. Per registered Guard (added at runtime inside `react()`): the Guard's `ChainGuardPolicySet`, `SpenderModeSet` and `SpenderRuleSet`, and `Approval` on each allowlisted token filtered to `owner = guard`.
 ERC-721 `Approval` (4 topics) is ignored via `opCode == 3`.
 
 ## Funding

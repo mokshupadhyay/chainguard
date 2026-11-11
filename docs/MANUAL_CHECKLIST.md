@@ -11,13 +11,15 @@ Dashboard steps below describe each provider's usual flow; confirm current UI la
 ## What Claude does automatically (category A)
 | Task | Status |
 |---|---|
-| Contracts + 17 Foundry tests, deploy scripts with chain-ID guards | Completed |
+| Contracts + 45 Foundry tests, deploy scripts with chain-ID guards | Completed |
 | Backend API + indexer + schema + 10 tests; frontend build/lint | Completed |
 | `preflight`, `verify-deployment`, `live-loop`, `install-deps` scripts (syntax-checked, not yet run) | Completed |
 | `.env.example` templates, `render.yaml`, Cloudflare SPA fallback, docs | Completed |
 | Run the deployment sequence and live loop **after your explicit go** | Pending (needs 1.1–1.6 and 2.1) |
 | Record real tx hashes/addresses into README, `DEMO.md`, env templates | Pending (after live loop) |
-| Factory-gated dynamic-subscription hardening (spam fix) + 27 tests | Completed (uncommitted) |
+| Factory-gated dynamic-subscription hardening (spam fix) | Completed (committed)
+| Spender-allowlist policy (enforced in `react()`) + UI card + tests | Completed (uncommitted) |
+| `find-forge.sh` + preflight fix for a shadowed `forge` | Completed (uncommitted) |
 | Re-run all tests/builds before each milestone; update this file | Ongoing |
 
 ---
@@ -27,7 +29,7 @@ Dashboard steps below describe each provider's usual flow; confirm current UI la
 |---|---|---|---|---|---|---|
 | 1.1 | Create a **dedicated testnet-only wallet** | Isolates deploy key from any real funds | You | Make a brand-new account in your wallet app (or `cast wallet new`). Never reuse a wallet that holds real assets. Note the **public address** only. | — | Pending |
 | 1.2 | Import it into an encrypted **Foundry keystore** | Scripts sign via `--account`; no raw key in `.env` or command lines | You | `cast wallet import chainguard-deployer --interactive` → paste the key and choose a password **at the terminal prompt**. Success: `cast wallet list` shows `chainguard-deployer`. | 1.1 | Pending |
-| 1.3 | Install pinned Reactive library | Needed to compile; not committed (license, see 5.3) | You (one command) | `./scripts/install-deps.sh` from `chain_guard/`. Success: prints `installed … @ 3ade0dc…` or `present`. | — | Pending |
+| 1.3 | Install pinned Reactive library | Needed to compile; not committed (license, see 5.3) | You (one command) | `./scripts/install-deps.sh` from `ChainGuard/`. Success: prints `installed … @ 3ade0dc…` or `present`. | — | Pending |
 | 1.4 | Create `.env` | Local config for scripts | You | `cp .env.example .env`, then set `DEPLOYER_ADDRESS=<public address from 1.1>`. Leave contract addresses blank for now. Do **not** add a private key. | 1.1 | Pending |
 | 1.5 | Get **Base Sepolia ETH** (~0.1 ETH) | Deploy gas, 0.002 ETH per Guard, and 0.05 ETH to convert to lREACT | You | Use any Base Sepolia faucet (e.g. a provider faucet or one linked from Base/Coinbase docs) to fund the **public address**. Success: `cast balance $DEPLOYER_ADDRESS --rpc-url https://base-sepolia-rpc.publicnode.com --ether` ≥ 0.1. | 1.4 | Pending |
 | 1.6 | Obtain **lREACT** (≥ 2.5, aim ~5) | Lasna gas for deploying and running the reactive contract | You (signs) / Claude can run on request | `set -a; . ./.env; set +a` then `cast send 0x2afaFD298b23b62760711756088F75B7409f5967 "request(address)" $DEPLOYER_ADDRESS --value 0.05ether --rpc-url $BASE_SEPOLIA_RPC --account $DEPLOYER_ACCOUNT`. Re-verify the faucet address on https://dev.reactive.network/reactive-mainnet first. Rate: 1 ETH→100 lREACT. If it doesn't arrive in a few minutes, MetaMask "Smart Transactions" can interfere — use `cast`. Success: `cast balance $DEPLOYER_ADDRESS --rpc-url https://lasna-rpc.rnk.dev/ --ether` ≈ 5. | 1.2, 1.5 | Pending |
