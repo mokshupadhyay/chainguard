@@ -38,12 +38,19 @@ contract GuardModule is AbstractCallback {
     mapping(address => bool) public allowedSpender;
 
     /// @dev Reactive Lasna subscribes to this event and mirrors the policy into `react()` state.
-    event ChainGuardPolicySet(address indexed owner, bool enabled, bool revokeUnlimited, uint256 maxAllowance);
+    event ChainGuardPolicySet(
+        address indexed owner, bool enabled, bool revokeUnlimited, uint256 maxAllowance
+    );
     /// @dev Spender-allowlist rules, mirrored into `react()` on Lasna (separate events keep the
     /// ChainGuardPolicySet ABI unchanged).
     event SpenderModeSet(bool restrictToAllowlist);
     event SpenderRuleSet(address indexed spender, bool allowed);
     event Revoked(address indexed token, address indexed spender, uint256 previousAllowance);
+    /// @dev A callback arrived but the allowance had already changed (e.g. the owner corrected an
+    /// unlimited approval to a small one), so the newer approval is left alone.
+    event RevokeSkipped(
+        address indexed token, address indexed spender, uint256 expected, uint256 current
+    );
     event Approved(address indexed token, address indexed spender, uint256 amount);
     event Withdrawn(address indexed token, address indexed to, uint256 amount);
     event ProtectionConfirmed(address indexed reactiveSender, address[] tokens);
@@ -62,20 +69,29 @@ contract GuardModule is AbstractCallback {
         _;
     }
 
-    constructor(address owner_, IPayable callbackProxy_, address reactive_, Policy memory initialPolicy_)
-        payable
-        AbstractCallback(callbackProxy_, reactive_)
-    {
+    constructor(
+        address owner_,
+        IPayable callbackProxy_,
+        address reactive_,
+        Policy memory initialPolicy_
+    ) payable AbstractCallback(callbackProxy_, reactive_) {
         owner = owner_;
         policy = initialPolicy_;
         emit ChainGuardPolicySet(
-            owner_, initialPolicy_.enabled, initialPolicy_.revokeUnlimited, initialPolicy_.maxAllowance
+            owner_,
+            initialPolicy_.enabled,
+            initialPolicy_.revokeUnlimited,
+            initialPolicy_.maxAllowance
         );
     }
 
     // ---------------------------------------------------------------- owner actions
 
-    function setPolicy(bool enabled, bool revokeUnlimited, uint256 maxAllowance) external onlyOwner onlyReady {
+    function setPolicy(bool enabled, bool revokeUnlimited, uint256 maxAllowance)
+        external
+        onlyOwner
+        onlyReady
+    {
         policy = Policy(enabled, revokeUnlimited, maxAllowance);
         emit ChainGuardPolicySet(owner, enabled, revokeUnlimited, maxAllowance);
     }
@@ -94,7 +110,11 @@ contract GuardModule is AbstractCallback {
     /// @notice Guard (not the EOA) grants the allowance, so the Guard is the approval owner.
     /// Blocked until Lasna confirms registration, and only for tokens Lasna actually watches:
     /// an approval on an unwatched token could never be revoked automatically.
-    function approveToken(address token, address spender, uint256 amount) external onlyOwner onlyReady {
+    function approveToken(address token, address spender, uint256 amount)
+        external
+        onlyOwner
+        onlyReady
+    {
         if (!protectedToken[token]) revert UnsupportedToken(token);
         IERC20Min(token).approve(spender, amount);
         emit Approved(token, spender, amount);
@@ -129,6 +149,22 @@ contract GuardModule is AbstractCallback {
         onlyServiceProvider
         onlyCallbackSender(reactiveSender)
     {
+        _revoke(token, spender);
+    }
+
+    /// @notice Approval-triggered revoke: only acts if the allowance still equals the value Lasna
+    /// evaluated, so a late callback can never zero a newer, safe approval.
+    function revokeIfUnchanged(
+        address reactiveSender,
+        address token,
+        address spender,
+        uint256 expected
+    ) external onlyServiceProvider onlyCallbackSender(reactiveSender) {
+        uint256 current = IERC20Min(token).allowance(address(this), spender);
+        if (current != expected) {
+            emit RevokeSkipped(token, spender, expected, current);
+            return;
+        }
         _revoke(token, spender);
     }
 

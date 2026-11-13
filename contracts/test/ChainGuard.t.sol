@@ -8,6 +8,7 @@ import {MockERC20} from "../src/MockERC20.sol";
 import {GuardModule} from "../src/GuardModule.sol";
 import {GuardFactory} from "../src/GuardFactory.sol";
 import {ChainGuardReactive} from "../src/reactive/ChainGuardReactive.sol";
+import {MaliciousSpender} from "../src/MaliciousSpender.sol";
 import {MockSystem} from "./mocks/MockSystem.sol";
 
 contract ChainGuardTest is Test {
@@ -57,7 +58,10 @@ contract ChainGuardTest is Test {
         g = factory.createGuard();
         Vm.Log[] memory logs = vm.getRecordedLogs();
         for (uint256 i; i < logs.length; i++) {
-            if (logs[i].emitter == address(factory) && logs[i].topics[0] == bytes32(rc.GUARD_CREATED_TOPIC())) {
+            if (
+                logs[i].emitter == address(factory)
+                    && logs[i].topics[0] == bytes32(rc.GUARD_CREATED_TOPIC())
+            ) {
                 _react(_fromVmLog(logs[i]));
             }
         }
@@ -80,11 +84,14 @@ contract ChainGuardTest is Test {
         );
     }
 
-    function _log(uint256 topic0, uint256 t1, uint256 t2, bytes memory data, address emitter, uint256 opCode)
-        internal
-        pure
-        returns (IReactive.LogRecord memory)
-    {
+    function _log(
+        uint256 topic0,
+        uint256 t1,
+        uint256 t2,
+        bytes memory data,
+        address emitter,
+        uint256 opCode
+    ) internal pure returns (IReactive.LogRecord memory) {
         return IReactive.LogRecord(ORIGIN, emitter, topic0, t1, t2, 0, data, 1, opCode, 0, 0xabc, 0);
     }
 
@@ -93,7 +100,14 @@ contract ChainGuardTest is Test {
         view
         returns (IReactive.LogRecord memory)
     {
-        return _log(rc.APPROVAL_TOPIC(), uint256(uint160(owner_)), uint256(uint160(spender)), abi.encode(value), tkn, 3);
+        return _log(
+            rc.APPROVAL_TOPIC(),
+            uint256(uint160(owner_)),
+            uint256(uint160(spender)),
+            abi.encode(value),
+            tkn,
+            3
+        );
     }
 
     function _approvalLog(address owner_, address spender, uint256 value)
@@ -109,7 +123,9 @@ contract ChainGuardTest is Test {
         view
         returns (IReactive.LogRecord memory)
     {
-        return _log(rc.POLICY_TOPIC(), uint256(uint160(user)), 0, abi.encode(en, unl, cap), emitter, 2);
+        return _log(
+            rc.POLICY_TOPIC(), uint256(uint160(user)), 0, abi.encode(en, unl, cap), emitter, 2
+        );
     }
 
     function _mirrorPolicy(bool en, bool unl, uint256 cap) internal {
@@ -122,7 +138,11 @@ contract ChainGuardTest is Test {
     }
 
     /// @dev a GuardCreated-shaped log, to be emitted by `emitter`
-    function _fakeGuardCreated(address emitter, address newGuard) internal view returns (IReactive.LogRecord memory) {
+    function _fakeGuardCreated(address emitter, address newGuard)
+        internal
+        view
+        returns (IReactive.LogRecord memory)
+    {
         return _log(
             rc.GUARD_CREATED_TOPIC(),
             uint256(uint160(attacker)),
@@ -136,9 +156,16 @@ contract ChainGuardTest is Test {
     // ------------------------------------------------------------ constants / ownership
     function test_topicsMatchEventSignatures() public view {
         assertEq(rc.APPROVAL_TOPIC(), uint256(keccak256("Approval(address,address,uint256)")));
-        assertEq(rc.POLICY_TOPIC(), uint256(keccak256("ChainGuardPolicySet(address,bool,bool,uint256)")));
-        assertEq(rc.GUARD_CREATED_TOPIC(), uint256(keccak256("GuardCreated(address,address,bool,bool,uint256)")));
-        assertEq(rc.APPROVAL_TOPIC(), 0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925);
+        assertEq(
+            rc.POLICY_TOPIC(), uint256(keccak256("ChainGuardPolicySet(address,bool,bool,uint256)"))
+        );
+        assertEq(
+            rc.GUARD_CREATED_TOPIC(),
+            uint256(keccak256("GuardCreated(address,address,bool,bool,uint256)"))
+        );
+        assertEq(
+            rc.APPROVAL_TOPIC(), 0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925
+        );
     }
 
     function test_guardIsApprovalOwner() public {
@@ -369,8 +396,9 @@ contract ChainGuardTest is Test {
         assertEq(chainId, ORIGIN);
         assertEq(recipient, address(guard));
         assertGt(gas, 0);
-        (address placeholder, address tk, address sp) = abi.decode(_args(payload), (address, address, address));
-        assertEq(bytes4(payload), GuardModule.revoke.selector);
+        (address placeholder, address tk, address sp) =
+            abi.decode(_args(payload), (address, address, address));
+        assertEq(bytes4(payload), GuardModule.revokeIfUnchanged.selector);
         assertEq(placeholder, address(0));
         assertEq(tk, address(token));
         assertEq(sp, attacker);
@@ -425,12 +453,14 @@ contract ChainGuardTest is Test {
         sys.resetCallbacks();
         GuardModule g = _newUnconfirmedGuard();
         assertEq(sys.callbackCount(), 1);
-        (uint256 chainId, address recipient, uint64 gasLimit, bytes memory payload) = sys.lastCallback();
+        (uint256 chainId, address recipient, uint64 gasLimit, bytes memory payload) =
+            sys.lastCallback();
         assertEq(chainId, ORIGIN);
         assertEq(recipient, address(g));
         assertGe(gasLimit, 100_000); // callbacks below 100k gas are ignored by the network
         assertEq(bytes4(payload), GuardModule.confirmRegistered.selector);
-        (address placeholder, address[] memory toks) = abi.decode(_args(payload), (address, address[]));
+        (address placeholder, address[] memory toks) =
+            abi.decode(_args(payload), (address, address[]));
         assertEq(placeholder, address(0)); // network overwrites it with the reactive address
         assertEq(toks.length, 1);
         assertEq(toks[0], address(token));
@@ -503,7 +533,9 @@ contract ChainGuardTest is Test {
         assertTrue(guard.protectedToken(address(token)));
         assertFalse(guard.protectedToken(address(other)));
         vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(GuardModule.UnsupportedToken.selector, address(other)));
+        vm.expectRevert(
+            abi.encodeWithSelector(GuardModule.UnsupportedToken.selector, address(other))
+        );
         guard.approveToken(address(other), attacker, 1);
     }
 
@@ -549,8 +581,13 @@ contract ChainGuardTest is Test {
         return _log(rc.SPENDER_MODE_TOPIC(), 0, 0, abi.encode(on), emitter, 1);
     }
 
-    function _ruleLog(address emitter, address spender, bool ok) internal view returns (IReactive.LogRecord memory) {
-        return _log(rc.SPENDER_RULE_TOPIC(), uint256(uint160(spender)), 0, abi.encode(ok), emitter, 2);
+    function _ruleLog(address emitter, address spender, bool ok)
+        internal
+        view
+        returns (IReactive.LogRecord memory)
+    {
+        return
+            _log(rc.SPENDER_RULE_TOPIC(), uint256(uint160(spender)), 0, abi.encode(ok), emitter, 2);
     }
 
     function test_spenderTopicsMatchEventSignatures() public view {
@@ -625,9 +662,10 @@ contract ChainGuardTest is Test {
         assertEq(sys.callbackCount(), 0);
         _react(_approvalLog(address(guard), attacker, type(uint256).max)); // unlimited rule still applies
         assertEq(sys.callbackCount(), 1);
-        _react(_ruleLog(address(guard), attacker, false)); // removing it re-arms the restriction
-        _react(_approvalLog(address(guard), attacker, 5 ether));
+        _react(_ruleLog(address(guard), attacker, false)); // removing it clears what it holds (+1 callback)
         assertEq(sys.callbackCount(), 2);
+        _react(_approvalLog(address(guard), attacker, 5 ether)); // and re-arms the restriction
+        assertEq(sys.callbackCount(), 3);
     }
 
     function test_zeroApprovalNeverTriggersRevoke() public {
@@ -654,5 +692,76 @@ contract ChainGuardTest is Test {
         _react(_modeLog(address(guard), true));
         _react(_ruleLog(fake, attacker, true));
         assertFalse(rc.spenderAllowed(address(guard), attacker));
+    }
+
+    // ------------------------------------------------------------ stale-callback safety
+    function test_revokeIfUnchanged_revokesWhenValueStillMatches() public {
+        vm.prank(address(guard));
+        token.approve(attacker, type(uint256).max);
+        vm.prank(PROXY);
+        guard.revokeIfUnchanged(address(rc), address(token), attacker, type(uint256).max);
+        assertEq(token.allowance(address(guard), attacker), 0);
+    }
+
+    function test_lateRevokeDoesNotZeroNewerSafeApproval() public {
+        vm.prank(address(guard));
+        token.approve(attacker, 100 ether); // owner already corrected the unlimited approval
+        vm.expectEmit(true, true, false, true, address(guard));
+        emit GuardModule.RevokeSkipped(address(token), attacker, type(uint256).max, 100 ether);
+        vm.prank(PROXY);
+        guard.revokeIfUnchanged(address(rc), address(token), attacker, type(uint256).max);
+        assertEq(token.allowance(address(guard), attacker), 100 ether);
+    }
+
+    function test_revokeIfUnchanged_onlyProxyAndTrustedReactive() public {
+        vm.expectRevert();
+        guard.revokeIfUnchanged(address(rc), address(token), attacker, 1);
+        vm.prank(PROXY);
+        vm.expectRevert();
+        guard.revokeIfUnchanged(attacker, address(token), attacker, 1);
+    }
+
+    // ------------------------------------------------------------ un-trusting a spender clears what it holds
+    function test_untrustingSpenderRequestsRevokeForEachWatchedToken() public {
+        _mirrorPolicy(true, true, 0);
+        _react(_modeLog(address(guard), true));
+        _react(_ruleLog(address(guard), attacker, true));
+        assertEq(sys.callbackCount(), 0);
+        _react(_ruleLog(address(guard), attacker, false));
+        assertEq(sys.callbackCount(), 1); // one watched token
+        (, address recipient,, bytes memory payload) = sys.lastCallback();
+        assertEq(recipient, address(guard));
+        assertEq(bytes4(payload), GuardModule.revoke.selector);
+        (, address tk, address sp) = abi.decode(_args(payload), (address, address, address));
+        assertEq(tk, address(token));
+        assertEq(sp, attacker);
+    }
+
+    function test_untrustingDoesNothingWhenModeOffOrPolicyDisabled() public {
+        _mirrorPolicy(true, true, 0);
+        _react(_ruleLog(address(guard), attacker, false)); // mode off
+        assertEq(sys.callbackCount(), 0);
+        _react(_modeLog(address(guard), true));
+        _mirrorPolicy(false, true, 0);
+        _react(_ruleLog(address(guard), attacker, false)); // protection disabled
+        assertEq(sys.callbackCount(), 0);
+    }
+
+    // ------------------------------------------------------------ demo attacker
+    function test_maliciousSpenderDrainsUnprotectedAndFailsAfterRevoke() public {
+        MaliciousSpender m = new MaliciousSpender();
+        vm.prank(user);
+        guard.approveToken(address(token), address(m), type(uint256).max);
+        // ChainGuard's revoke lands first: the drain finds nothing to take
+        vm.prank(PROXY);
+        guard.revokeIfUnchanged(address(rc), address(token), address(m), type(uint256).max);
+        assertFalse(m.drain(address(token), address(guard), attacker));
+        assertEq(token.balanceOf(address(guard)), 1_000 ether);
+        // protection off / too slow: the drain wins
+        vm.prank(user);
+        guard.approveToken(address(token), address(m), type(uint256).max);
+        assertTrue(m.drain(address(token), address(guard), attacker));
+        assertEq(token.balanceOf(attacker), 1_000 ether);
+        assertEq(token.balanceOf(address(guard)), 0);
     }
 }

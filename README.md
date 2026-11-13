@@ -9,7 +9,7 @@ A reactive on-chain watchdog for token approvals. Your **Guard** (a vault you ow
 ## Status
 | Item | State |
 |---|---|
-| Contracts + Foundry tests (45) | ✅ passing locally |
+| Contracts + Foundry tests (51) | ✅ passing locally |
 | Backend API (10 tests) / Frontend build | ✅ passing locally |
 | Testnet deployment & live loop | ⏳ **not yet done** |
 | Contract addresses / tx hashes | _none yet — will be added only from real deployments_ |
@@ -25,7 +25,7 @@ Solidity + Foundry · Vite/React/TS/Tailwind/wagmi/viem · Express/TS/Zod · Sup
 ```bash
 cp .env.example .env            # fill in later; never commit
 ./scripts/install-deps.sh       # pinned reactive-lib-omni (not vendored; see docs/DEPLOYMENT.md §D)
-cd contracts && forge test      # 45 tests (see note below if `forge` is not Foundry)
+cd contracts && forge test      # 51 tests (see note below if `forge` is not Foundry)
 cd ../backend && npm i && npm test && npm run dev     # in-memory store if DATABASE_URL unset
 cd ../frontend && cp .env.example .env && npm i && npm run dev   # http://localhost:5173
 ```

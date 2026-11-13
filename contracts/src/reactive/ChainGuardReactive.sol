@@ -18,9 +18,12 @@ import {AbstractReactive} from "@reactive/src/base/AbstractReactive.sol";
 ///  3. Everything else is ignored, and re-checked inside `react()` as defense in depth.
 contract ChainGuardReactive is AbstractReactive {
     // keccak256 of the event signatures (computed, not hand-copied)
-    uint256 public constant APPROVAL_TOPIC = uint256(keccak256("Approval(address,address,uint256)"));
-    uint256 public constant POLICY_TOPIC = uint256(keccak256("ChainGuardPolicySet(address,bool,bool,uint256)"));
-    uint256 public constant GUARD_CREATED_TOPIC = uint256(keccak256("GuardCreated(address,address,bool,bool,uint256)"));
+    uint256 public constant APPROVAL_TOPIC =
+        uint256(keccak256("Approval(address,address,uint256)"));
+    uint256 public constant POLICY_TOPIC =
+        uint256(keccak256("ChainGuardPolicySet(address,bool,bool,uint256)"));
+    uint256 public constant GUARD_CREATED_TOPIC =
+        uint256(keccak256("GuardCreated(address,address,bool,bool,uint256)"));
     uint256 public constant SPENDER_MODE_TOPIC = uint256(keccak256("SpenderModeSet(bool)"));
     uint256 public constant SPENDER_RULE_TOPIC = uint256(keccak256("SpenderRuleSet(address,bool)"));
     uint256 public constant MAX_TOKENS = 8;
@@ -48,16 +51,28 @@ contract ChainGuardReactive is AbstractReactive {
 
     event FactorySet(address indexed factory);
     event GuardRegistered(
-        address indexed owner, address indexed guard, bool enabled, bool revokeUnlimited, uint256 maxAllowance
+        address indexed owner,
+        address indexed guard,
+        bool enabled,
+        bool revokeUnlimited,
+        uint256 maxAllowance
     );
     event GuardRejected(address indexed guard, string reason);
-    event PolicyMirrored(address indexed guard, bool enabled, bool revokeUnlimited, uint256 maxAllowance);
+    event PolicyMirrored(
+        address indexed guard, bool enabled, bool revokeUnlimited, uint256 maxAllowance
+    );
     event SpenderModeMirrored(address indexed guard, bool restrictToAllowlist);
     event SpenderRuleMirrored(address indexed guard, address indexed spender, bool allowed);
     event RevokeRequested(
-        address indexed guard, address indexed token, address indexed spender, uint256 value, string reason
+        address indexed guard,
+        address indexed token,
+        address indexed spender,
+        uint256 value,
+        string reason
     );
-    event ApprovalIgnored(address indexed guard, address indexed token, address indexed spender, uint256 value);
+    event ApprovalIgnored(
+        address indexed guard, address indexed token, address indexed spender, uint256 value
+    );
 
     error NotAdmin();
     error FactoryAlreadySet();
@@ -87,7 +102,12 @@ contract ChainGuardReactive is AbstractReactive {
         if (factory_ == address(0)) revert BadConfig();
         factory = factory_;
         SYSTEM.subscribe(
-            ORIGIN_CHAIN_ID, factory_, GUARD_CREATED_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+            ORIGIN_CHAIN_ID,
+            factory_,
+            GUARD_CREATED_TOPIC,
+            REACTIVE_IGNORE,
+            REACTIVE_IGNORE,
+            REACTIVE_IGNORE
         );
         emit FactorySet(factory_);
     }
@@ -122,18 +142,40 @@ contract ChainGuardReactive is AbstractReactive {
             emit GuardRejected(guard, "max-guards");
             return;
         }
-        (bool enabled, bool revokeUnlimited, uint256 cap) = abi.decode(log_.data, (bool, bool, uint256));
+        (bool enabled, bool revokeUnlimited, uint256 cap) =
+            abi.decode(log_.data, (bool, bool, uint256));
         registered[guard] = true;
         guardCount++;
         policies[guard] = Policy(enabled, revokeUnlimited, cap);
 
         // Runtime subscriptions, scoped to this Guard only.
-        SYSTEM.subscribe(ORIGIN_CHAIN_ID, guard, POLICY_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
-        SYSTEM.subscribe(ORIGIN_CHAIN_ID, guard, SPENDER_MODE_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
-        SYSTEM.subscribe(ORIGIN_CHAIN_ID, guard, SPENDER_RULE_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        SYSTEM.subscribe(
+            ORIGIN_CHAIN_ID, guard, POLICY_TOPIC, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+        );
+        SYSTEM.subscribe(
+            ORIGIN_CHAIN_ID,
+            guard,
+            SPENDER_MODE_TOPIC,
+            REACTIVE_IGNORE,
+            REACTIVE_IGNORE,
+            REACTIVE_IGNORE
+        );
+        SYSTEM.subscribe(
+            ORIGIN_CHAIN_ID,
+            guard,
+            SPENDER_RULE_TOPIC,
+            REACTIVE_IGNORE,
+            REACTIVE_IGNORE,
+            REACTIVE_IGNORE
+        );
         for (uint256 i; i < _tokens.length; i++) {
             SYSTEM.subscribe(
-                ORIGIN_CHAIN_ID, _tokens[i], APPROVAL_TOPIC, uint256(uint160(guard)), REACTIVE_IGNORE, REACTIVE_IGNORE
+                ORIGIN_CHAIN_ID,
+                _tokens[i],
+                APPROVAL_TOPIC,
+                uint256(uint160(guard)),
+                REACTIVE_IGNORE,
+                REACTIVE_IGNORE
             );
         }
         // Readiness handshake: tell the Guard (on the origin chain) it is registered. The Guard blocks
@@ -143,7 +185,9 @@ contract ChainGuardReactive is AbstractReactive {
                 chainId: log_.chainId,
                 recipient: guard,
                 gasLimit: callbackGasLimit,
-                payload: abi.encodeWithSignature("confirmRegistered(address,address[])", address(0), _tokens)
+                payload: abi.encodeWithSignature(
+                    "confirmRegistered(address,address[])", address(0), _tokens
+                )
             })
         );
         emit GuardRegistered(address(uint160(log_.topic1)), guard, enabled, revokeUnlimited, cap);
@@ -152,7 +196,8 @@ contract ChainGuardReactive is AbstractReactive {
     function _onPolicy(LogRecord calldata log_) internal {
         // Only a registered Guard may set its own policy; any other emitter is ignored.
         if (!registered[log_.contractAddress]) return;
-        (bool enabled, bool revokeUnlimited, uint256 cap) = abi.decode(log_.data, (bool, bool, uint256));
+        (bool enabled, bool revokeUnlimited, uint256 cap) =
+            abi.decode(log_.data, (bool, bool, uint256));
         policies[log_.contractAddress] = Policy(enabled, revokeUnlimited, cap);
         emit PolicyMirrored(log_.contractAddress, enabled, revokeUnlimited, cap);
     }
@@ -169,6 +214,27 @@ contract ChainGuardReactive is AbstractReactive {
         bool allowed = abi.decode(log_.data, (bool));
         spenderAllowed[log_.contractAddress][spender] = allowed;
         emit SpenderRuleMirrored(log_.contractAddress, spender, allowed);
+        // Un-trusting a spender must also clear what it already holds, not only its next approval.
+        if (
+            !allowed && restrictSpenders[log_.contractAddress]
+                && policies[log_.contractAddress].enabled
+        ) {
+            for (uint256 i; i < _tokens.length; i++) {
+                SYSTEM.requestCallbackV_1_0(
+                    ISystemContract.CallbackConfiguration_V_1_0({
+                        chainId: log_.chainId,
+                        recipient: log_.contractAddress,
+                        gasLimit: callbackGasLimit,
+                        payload: abi.encodeWithSignature(
+                            "revoke(address,address,address)", address(0), _tokens[i], spender
+                        )
+                    })
+                );
+                emit RevokeRequested(
+                    log_.contractAddress, _tokens[i], spender, 0, "spender-removed"
+                );
+            }
+        }
     }
 
     function _onApproval(LogRecord calldata log_) internal {
@@ -184,17 +250,29 @@ contract ChainGuardReactive is AbstractReactive {
             return;
         }
         // First payload argument is a placeholder; the network overwrites it with this contract's address.
-        bytes memory payload =
-            abi.encodeWithSignature("revoke(address,address,address)", address(0), log_.contractAddress, spender);
+        bytes memory payload = abi.encodeWithSignature(
+            "revokeIfUnchanged(address,address,address,uint256)",
+            address(0),
+            log_.contractAddress,
+            spender,
+            value
+        );
         SYSTEM.requestCallbackV_1_0(
             ISystemContract.CallbackConfiguration_V_1_0({
-                chainId: log_.chainId, recipient: guard, gasLimit: callbackGasLimit, payload: payload
+                chainId: log_.chainId,
+                recipient: guard,
+                gasLimit: callbackGasLimit,
+                payload: payload
             })
         );
         emit RevokeRequested(guard, log_.contractAddress, spender, value, reason);
     }
 
-    function _evaluate(address guard, address spender, uint256 value) internal view returns (bool, string memory) {
+    function _evaluate(address guard, address spender, uint256 value)
+        internal
+        view
+        returns (bool, string memory)
+    {
         Policy memory p = policies[guard];
         if (!p.enabled) return (false, "");
         if (value == 0) return (false, ""); // a revocation itself must never re-trigger a revoke
